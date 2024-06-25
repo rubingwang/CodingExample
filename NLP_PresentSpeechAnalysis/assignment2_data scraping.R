@@ -1,82 +1,83 @@
-# libraries
-library(ldatuning)
-library(tidyverse)  
-library(tidytext)  
-library(topicmodels)  
-library(tm)         
-library(SnowballC)  
-library(reticulate)
+# Load required libraries
+library(rvest)
+library(magrittr)
+library(tidyverse)
+library(dplyr)
 
-# read data
-url3 <- "C:/Users/rubing/Desktop/研一下/social data science/exam/project2/data/FullData1.csv"
-FullData <- read.csv(url3)
-names(FullData)[1] <- "id"  
+# Define the URL
+url <- 'https://www.americanrhetoric.com/gwbushspeeches.htm'
 
-# define text cleaning function
-Clean_Text <- function(text) {
-  temp <- tolower(text)  #lowercase
-  temp <- gsub("[[:punct:][:blank:]]+", " ", temp)  #remove punctuation
-  temp <- gsub("[[:digit:]]", "", temp)  #remove numbers
-  temp <- gsub("(s?)(f|ht)tp(s?)://\\S+\\b", "", temp)  #remove regular URLs
-  temp <- gsub("[A-Za-z]{1,5}[.][A-Za-z]{2,3}/[A-Za-z0-9]+\\b", "", temp)  #remove tiny URLs
-  temp <- gsub("review", "", temp)  #remove the word "review"
-  temp <- gsub("reviews", "", temp)  #remove the word "reviews"
-  temp <- gsub(" mm | pp | bb | q | hn ", "", temp)  #remove specific symbols
-  return(temp)
-}
+# Read the HTML content from the URL
+web <- read_html(url)
 
-#extract and clean the content column
-corpus <- FullData$content
-corpus <- iconv(corpus, "WINDOWS-1252", "UTF-8")  # Convert encoding
-corpus <- Clean_Text(corpus)
+# Extract the table containing speech titles and dates
+titles <- web %>% html_nodes('table') %>% .[[2]] %>% html_table()
+titles
 
-#create term matrix
-text <- Corpus(VectorSource(corpus))
-Content <- TermDocumentMatrix(text)
-Content_tidy <- tidy(Content)
+# Extract all links from the page
+link <- web %>% html_nodes('a') %>% html_attr("href")
+link
 
-#define additional stop words
-add_stop_words <- c(
-  'like', 'youre', 'ive', 'im', 'really', 'id', 'just', 'dont', 'didnt', 'thi', 'wa',
-  'say', 'know', 'make', 'people', "today", "way", "day", "time", "year", 'tonight',
-  'live', 'youll', 'youve', 'things', 'thing', 'youre', 'right', 'really', 'lot',
-  'little', 'maybe', 'men', "americans", "america",
-  'kind', 'heart', "american", "president", "united", "states", "doesn", "obama:well", "Trump", "obama:i", "youtube",
-  "thatâ", "â", "."
-)
-custom_stop_words <- tibble(add_stop_words)
-names(custom_stop_words)[1] <- "word"
+# Convert titles to a data frame and clean it
+clean <- data.frame(titles)
+clean <- clean[-c(1:30),]  # Remove the first 30 rows
+clean <- clean[,-c(4:34)]  # Remove columns 4 to 34
 
-#remove stop words
-newsDTM_tidy_cleaned <- Content_tidy %>% 
-  anti_join(stop_words, by = c("term" = "word")) %>%  # Remove English stop words
-  anti_join(custom_stop_words, by = c("term" = "word"))  # Remove custom stop words
+# Clean and combine the data from different parts
+clean1 <- clean %>% slice(1:5) %>% select(-1)
+names(clean1) <- c("time", "title")
 
-#reconstruct cleaned documents
-stops_documents <- newsDTM_tidy_cleaned %>%
-  group_by(document) %>% 
-  mutate(terms = toString(rep(term, count))) %>%
-  select(document, terms) %>%
-  unique()
-names(stops_documents) <- c("stop_document_id", "document_stop_word")
+clean2 <- clean %>% slice(6:34) %>% select(-3)
+names(clean2) <- c("time", "title")
 
-#stem the words
-newsDTM_tidy_cleaned <- newsDTM_tidy_cleaned %>% 
-  mutate(stem = wordStem(term))
+clean3 <- clean %>% slice(35:108) %>% select(-1)
+names(clean3) <- c("time", "title")
 
-#reconstruct stemmed documents
-cleaned_documents <- newsDTM_tidy_cleaned %>%
-  group_by(document) %>% 
-  mutate(terms = toString(rep(stem, count))) %>%
-  select(document, terms) %>%
-  unique()
-names(cleaned_documents) <- c("stemmed_document_id", "document_stemmed")
+clean_combined <- rbind(clean1, clean2, clean3)
 
-#combine cleaned and stemmed data 
-FullData_cleaned <- cbind(FullData, cleaned_documents)
-FullData_cleaned <- cbind(FullData_cleaned, stops_documents)
+# Further clean and process the links
+link <- data.frame(link)
+names(link) <- "link"
+link1 <- link[!grepl("pdf", link$link),]
+link2 <- link1[!grepl("mp3", link1$link),]
+link2 <- link2[-c(1:22),]
+link2 <- link2[-c(109:117),]
 
-#separateby parties 
-FullData_cleaned_R <- subset(FullData_cleaned, Party == "R")
-FullData_cleaned_D <- subset(FullData_cleaned, Party == "D")
+# Combine cleaned data with links
+clean_combined <- cbind(clean_combined, link2)
+clean_combined <- clean_combined[!grepl("http", clean_combined$link),]
 
+# Correct the URLs
+clean_combined$link <- paste('https://www.americanrhetoric.com/', clean_combined$link, sep="")
+link4 <- clean_combined$link
+
+# Extract the speech content from each link
+content <- sapply(link4, function(url) {
+  tryCatch({
+    read_html(url) %>% html_node('td') %>% html_text()
+  }, error = function(e) {
+    NA
+  })
+})
+
+content <- data.frame(content)
+
+# Remove headers and clean the content
+result <- sapply(content, function(text) {
+  substring(text, 700)
+})
+
+result <- data.frame(result)
+
+# Combine all the cleaned data into the final dataframe
+BushData <- cbind(clean_combined, result)
+BushData <- BushData[, -3]  # Remove the redundant link column
+
+# Rename the columns appropriately
+names(BushData) <- c("date", "title", "content")
+
+# Add a political party column
+BushData$Party <- 'R'
+
+# Display the final data
+BushData
