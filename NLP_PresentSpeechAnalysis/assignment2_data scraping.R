@@ -4,10 +4,8 @@ library(magrittr)
 library(tidyverse)
 library(dplyr)
 
-# Define the URL
+# Read the url
 url <- 'https://www.americanrhetoric.com/gwbushspeeches.htm'
-
-# Read the HTML content from the URL
 web <- read_html(url)
 
 # Extract the table containing speech titles and dates
