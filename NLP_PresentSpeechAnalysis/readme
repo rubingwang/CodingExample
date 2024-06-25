@@ -1,0 +1,4 @@
+This folder contains part of the coding of the second project on my resume, the US present speech analysis. 
+1. data scraping: the code for scraping the speeches from the website 
+2. data cleaning: the code for speech cleaning/text cleaning 
+3. sentiment analysis: the Rmarkdown code for sentiment analysis and short analysis report

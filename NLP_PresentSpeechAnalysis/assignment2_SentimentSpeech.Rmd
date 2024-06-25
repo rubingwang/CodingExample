@@ -1,0 +1,263 @@
+---
+title: "Sentiment of Speech From Two Paries in USA"
+author: "Rubing Wang"
+date: "8/31/2022"
+output: html_document
+---
+
+# Data
+
+This project uses the speeches of three American presidents in the 20 years: George Walker Bush, Barack Obama, and Donald John Trump. To collect the speeches of Bush and Obama, we scabbed our data from https://www.americanrhetoric.com/index.htm. The website collects speeches for about 20 years. The corpus of Trump is downloaded from Kaggle, it contains his speeches from 2016 to 2018.
+
+We give each speech a hash on its party, ‘the Democrats’ or ‘the Republicans’. We only keep the column ‘title’, ‘date’, ‘content’, and ‘party’ from the website.We take the subset of Trump’s speech since there are too many speeches compared to the other two. Or if the republicans take the majority, it is meaningless to do the comparison. So, it is important and necessary to have a balanced data set. In the end, our data set contains about 850 speeches with around 420 speeches from the Republic party and the rest from the Democratic.
+
+
+# Sentiment Analysis
+
+Sentiment analysis , is to systematically identify, extract, quantify,and abstract subjective information, which is defined as a process that automates the mining of attitudes, opinions, views, and emotions from text, speech, tweets, and database sources through Natural Language Processing (NLP) [1]. Normally, sentiment analysis would classify text information into three main categories, namely, “positive”("pos") or “negative” ("neg"), or “neutral”(neu)[2].Sentiment analysis typically requires numerous methodological decisions, such as deciding whether to use a dictionary-based or a supervised machine learning approach and determining how sentiment measures are suited to the investigation of a particular domain (e.g., VADER for social media data).[3]
+
+## Data and Methodology
+
+In this part, we use two methods/packages to conduct sentiment analyisis on our speeches, orderly, Tidytext, and Vader (Valence Aware Dictionary for Sentiment Reasoning). For Tidytext, we subtracted negativity ratings from positivity ratings to obtain overall scores using Bing dictionary and defined a speech as neutral if that overall rating was 0 as well as missing data (over 0 as positive, under 0 as negative). During data processing, we label positive, negative, and neutral, as "pos","neg", and "neu" individually. For Vader, we used its internal continuous compound score as overall scale and classified speech as neutral if that score was between -1 and 0 ( witout 0), as positive if that score was between 0 ( witout 0) and 1, as neutral for others. ll 836 speeches are used in this process with un-cleaned speech content. 
+
+```{r, message=FALSE}
+library(tidytext)
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(anytime)
+library(cowplot)
+library(lubridate)
+library(vader)
+library(corpus)
+library(SnowballC) 
+
+speech = read.csv("/Users/rubing/Desktop/Collecting and Analysing Big Data/FullData.csv",header = T)
+
+speech$date<-as.Date(anydate(speech$date))
+speech$Party = ifelse(speech$Party=="D","The Democrats", "The Republicans")
+
+
+```
+
+## Tidytext Sentiment
+
+```{r , message=FALSE}
+### Label ###
+
+speech$label1 = ""
+for (i in 1:length(speech$content)) {
+  df = tibble(text = speech$content[i]) %>% unnest_tokens(word,text) %>% 
+    inner_join(get_sentiments("bing")) %>% count(sentiment)
+  if (rlang::is_empty(df$n)){
+    speech$label2[i] = "neu"
+  }
+  else {
+    sentiment = df$sentiment[which.max(df$n)]
+    if (sentiment == "positive"){
+      speech$label1[i] = "pos"
+    }
+    else {
+      speech$label1[i] = "neg"
+    }
+  }
+}
+
+speech$label2 = ""
+for (i in 1:length(speech$label1)) {
+  if (speech$label1[i] == "neu"){
+    speech$label2[i] = 0
+ }
+    else if (speech$label1[i] == "pos"){
+      speech$label2[i] = 1
+ }
+    else {
+      speech$label2[i] = -1
+ }
+}
+
+summary1 <- group_by(speech,Party) %>% 
+  summarise(TidytextSCore=mean(as.numeric(label2)) ,NumberSpeech=n())
+
+print(summary1)
+
+```
+
+According to the table above, we can see that speeches sentiment score from the Democrats (0.860, n=428) is more positive than speeches sentiment score from the Republicans (0.760, n=408) using Tidytext Sentiment Analysis. 
+
+## Vader Sentiment
+
+```{r,eval=FALSE}
+
+### Sentiment Scoring ###
+
+vdf1<-vader_df(speech$content[1:100])
+vdf2<-vader_df(speech$content[201:300])
+vdf3<-vader_df(speech$content[301:400])
+vdf4<-vader_df(speech$content[401:300])
+vdf5<-vader_df(speech$content[501:400])
+vdf6<-vader_df(speech$content[601:300])
+vdf7<-vader_df(speech$content[701:400])
+vdf8<-vader_df(speech$content[801:836]) 
+vdf <- rbind(vdf1,vdf2,vdf3,vdf4,vdf5,vdf6,vdf7,vdf8) }
+
+### label According to Scoring###
+
+speech$cmpd_score = vdf$compound
+speech$cmpd_label = ifelse(speech$cmpd_score>=0,"pos","neg")
+speech$cmpd_label[which(speech$cmpd_score==0)] = "neu"
+
+```
+
+
+```{r}
+### Import Saved vdf Dataset ###
+speech = read.csv("/Users/rubing/Desktop/speech_all.csv",header = T)
+
+#####plot#####
+options(warinings = -1)
+
+speech$date<-as.Date(anydate(speech$date))
+speech$Party = ifelse(speech$Party=="D","The Democrats", "The Republicans")
+
+score_by_date = speech %>% 
+  group_by(date,Party) %>% summarise_at(vars(cmpd_score),list(avg_score = mean))
+
+summary2 <- group_by(speech,Party) %>% 
+  summarise(VaderScore=mean(cmpd_score,na.rm = T),NumberSpeech=n())
+
+print(summary2)
+
+
+### Dived into Two Groups ###
+score_by_date1 <- filter(score_by_date,Party=="The Democrats")
+score_by_date2a<- filter(score_by_date,date< anydate("01 Jan 2010") &       
+                           Party=="The Republicans")
+score_by_date2b<- filter(score_by_date,date>= anydate("01 Jan 2016")
+                         & avg_score != "NA" & date<= anydate("01 Jan 2018")                          & Party=="The Republicans")
+score_by_date2 <- rbind(score_by_date2a,score_by_date2b)
+score_by_date3 <- rbind(score_by_date1,score_by_date2)
+```
+
+According to the table above, we can see that speeches sentiment score from the Democrats (0.857, n=428) is more positive than speeches sentiment score from the Republicans (0.722, n=408) using Vader Sentiment Analysis. 
+
+Compare to the results from two different methods, we found that it seems to be the same round score for the Democrats between two methods, individually, 0.860 and 0.857, but be different scores for the Republicans between two methods,individually, 0.760 and 0.722.
+
+```{r, message=FALSE}
+### Density: The Democrats (blue)  ###
+
+ggplot(data=score_by_date1, aes(x=avg_score, group=Party, fill=Party)) +
+  geom_density(adjust=100,alpha=1) + scale_fill_manual(values=c("#3333FF"))+
+  ggtitle("Figure 1. The Distribution of the Democrats") + 
+  xlab("Sentiment Score") + ylab("Density")
+
+### Density: The Republicans (red)  ###
+
+ggplot(data=score_by_date2, aes(x=avg_score, group=Party, fill=Party)) +
+  geom_density(adjust=1.5,alpha=1) + scale_fill_manual(values=c("#CC0033")) + ggtitle("Figure 2. The Distribution of the Republicans") + 
+  xlab("Sentiment Score") + ylab("Density")
+
+```
+
+After comparing to the results from the two diffent methods, we dicided to conduct further analysis using Vader (details see next part). Figure 1 and Figure 2 show that the distribution of the score of speeches from two parties, the Democrats (blue color) and the Republicans (red color). For the Democrats, it suggest that most speeches scores are very to positive (value equals 1). For the Republicans, it suggest that most speeches scores are very to positive (value equals 1), but also lots of speech score distribute between 0 and 0.5.  
+
+```{r, message=FALSE}
+#### Plot: All Speeches ###
+
+ggplot(score_by_date,aes(x=date,y=avg_score)) + 
+  geom_line(data = score_by_date1, color = "blue") + 
+  geom_point(data = score_by_date1, color = "dark blue" )+ 
+  geom_line(data = score_by_date2, color = "red") + 
+  geom_point(data = score_by_date2, color = "dark red" )+
+  theme_grey() + geom_hline(yintercept=0,color = "black") + 
+  ggtitle("Figure 3. Sentiment Score Between Parties Across Years") + 
+  xlab("Date") + ylab("Sentiment Score")+
+   theme(plot.title.position = 'plot', 
+      plot.title = element_text(hjust = 0.5))
+
+```
+
+
+```{r, message=FALSE}
+### Plot: The Democrats (blue) ###
+
+ggplot(score_by_date1,aes(x=date,y=avg_score)) + geom_line(color = "blue") + 
+  geom_point(color = "dark blue")+ theme_grey() + geom_hline(yintercept=0,color = "black") +
+  ggtitle("Figure 4. Sentiment Score for the Speeches of the Democrats") + 
+  xlab("Date") + ylab("Sentiment Score")+
+   theme(plot.title.position = 'plot', 
+      plot.title = element_text(hjust = 0.5))
+
+### Plot: The Republicans (red) ###
+#score_by_date2 <- filter(score_by_date,Party=="The Republicans")
+
+ggplot(score_by_date2,aes(x=date,y=avg_score)) + geom_line(color = "dark red") + geom_point(color = "red")+ theme_grey() + geom_hline(yintercept=0,color = "black") +
+  ggtitle("Figure 5. Sentiment Score for the Speeches of the Republicans") +
+  xlab("Date") + ylab("Sentiment Score")+
+   theme(plot.title.position = 'plot', 
+      plot.title = element_text(hjust = 0.5))
+```
+
+Figure 3 shows how all speech score changes across the years from the year 2001 to the year 2018. The red line stands for the Republicans and the blue line stands for the Democrats. The horizontal black line is the neutral (value equals 0). This plot shows that more red points before the year 2010 are more closer to 1 than red points after 2015, as well as, more red points shows up between 0 and 0.5. In addition, blue points have a more highly presence between 2010 and 2012 than the after. (also we can zoom in, see Figure 4 and 5).
+
+```{r, message=FALSE}
+###Plot: The Republicans_Bush (red) ###
+
+ggplot(score_by_date2a,aes(x=date,y=avg_score)) + 
+  geom_line(color = "dark red") + geom_point(color = "red")+ 
+  theme_grey() + geom_hline(yintercept=0,color = "black") +
+  ggtitle("Figure 6. Sentiment Score for the Speeches of the Republicans_Bush") + 
+  xlab("Date") + ylab("Sentiment Score") +
+  theme(plot.title.position = 'plot', 
+      plot.title = element_text(hjust = 0.5))
+
+### Plot: The Republicans_Trump (red) ###
+
+ggplot(score_by_date2b,aes(x=date,y=avg_score)) + 
+  geom_line(color = "dark blue") + geom_point(color = "blue")+ 
+  theme_grey() + geom_hline(yintercept=0,color = "black")+
+  ggtitle("Figure 7. Sentiment Score for the Speeches of the Republicans_Trump") + 
+  xlab("Date") + ylab("Sentiment Score") +
+   theme(plot.title.position = 'plot', 
+      plot.title = element_text(hjust = 0.5))
+
+```
+
+Further Analysis are conduct within the Republicans, individually, Bush and Trump. As the Figure 6 and 7 shown, most score points from Bush seem to be closer than score points from Trump. Some score points from Trump are around between 0 and 0.5, especially between the year 2017 and 2018, which means that there is less strong positive than before. 
+
+
+## Conclusion and Limitions
+
+As the results, we can see that speeches from the Democrats are more positive than speeches from the Republicans in general. For the Democrats, most speeches expressed a very positive information, expect from the year 2013 and the year around 2016. For the Republicans, much speeches expressed a relatively positive information. Specifically, speeches during Bush presidency are most likely very positive, however, speeches during Trump presidency are not strong enough positive with somewhat positive.
+
+We also found that there is a difference between two methods, especially for negative score. It maybe that negative sentiment is difficult to reliably detect with dictionary approaches. This could be due to nuanced linguistic markers (e.g., sarcasm) that require advanced algorithms to be detected [5]. 
+For Tidytext, it does not provide its own default dictionary. At its core, it strives to pre-process input text which is then analyzed through any input dictionary and output a  Tidytext provides functions for converting text into a “one-token-perdocument-per-row” format which may ease text analysis.
+
+For Vader, itfeatures multiple sub-dictionaries and considers word order and degree modifiers to give us a continous score, which we can use it to classify speeches in a more detailed way,(e.g, "very positive", "slightly positive", "somewhat positive"). It performs well in sentiment analyses of speech. We also found the R implementation of Vader to take more time to compute compared to Tidytext.
+
+In a word, we are willing to accept the result from Vader as our final result of speech sentiment analysis in our project. 
+
+
+
+# Reference
+
+[1]
+Chaudhry, H., Javed, Y., Kulsoom, F., Mehmood, Z., Khan, Z., Shoaib, U., & Janjua, S. (2021). Sentiment analysis of before and after elections: Twitter data of U.S. election 2020. Electronics (Basel), 10(17), 2082.
+https://www.mdpi.com/2079-9292/10/17/2082
+
+[2]
+Liu, B. (2015). Sentiment Analysis: Mining Opinions, Sentiments, and Emotions. Cambridge: Cambridge University Press. doi:10.1017/CBO9781139084789
+https://www.cambridge.org/core/books/sentiment-analysis/3F0F24BE12E66764ACE8F179BCDA42E9
+
+[3]
+Ribeiro, F. N. , M Araújo,  Gonalves, P. ,  Benevenuto, F. , &  Gonalves, M. A. . (2015). Sentibench - a benchmark comparison of state-of-the-practice sentiment analysis methods.
+https://epjdatascience.springeropen.com/articles/10.1140/epjds/s13688-016-0085-1
+
+[4]
+Borchers, C.,  Rosenberg, J. M.,Gibbons, B.,Burchfield, M. A., &Fischer, C. (2021). To Scale or Not to Scale: Comparing Popular Sentiment Analysis Dictionaries on Educational Twitter Data. Fourteenth International Conference on Educational Data Mining (EDM 2021).
+https://educationaldatamining.org/EDM2021/virtual/static/pdf/EDM21_paper_122.pdf
+
+[5]
+Riloff, E.,  Qadir, A. ,  Surve, P.,Silva, L. D. ,  Gilbert, N. , &  Huang, R. (2013). Sarcasm as contrast between a positive sentiment and negative situation.
+https://aclanthology.org/D13-1066.pdf

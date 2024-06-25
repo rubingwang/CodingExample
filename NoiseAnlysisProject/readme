@@ -1,0 +1,10 @@
+This folder contains part of the coding of the final course project in Modern Data Analysis.
+The final paper aims to model the features of noise information of Leuven (in Belgium) in 2020 and deliver a noise-predictive model.
+Much information is collected because noise generation may be related to students’ daily routines, store opening hours, car traffic, pedestrian screams, rain sounds, humidity, temperature, etc.
+All noise information is contained in three CSV files (export40/41/42), and the weather information is contained in the CSV file since the weather can also influence the noise factors. 
+In the project, I also add some extra university calendar events. 
+
+Thus, the ipynb files 1-5 are their processing steps. 
+The ipynb 6 is the code for exploratory analysis.
+The ipynb 7 is the code for precessing the variable name and variables’ setup, etc.
+The ipynb 8 is the code for model training and feature engineering to select the optional variables for the model.
